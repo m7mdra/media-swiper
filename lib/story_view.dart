@@ -15,19 +15,6 @@ enum ProgressPosition { top, bottom }
 /// should use [small]
 enum IndicatorHeight { small, large }
 
-abstract class Story {
-  final Widget view;
-  final Duration duration;
-  bool shown;
-
-  Story(this.view, this.duration);
-}
-
-class VideoStory extends Story {
-  VideoStory(VideoPlayer view, Duration duration) : super(view, duration);
-}
-
-
 /// This is a representation of a story item (or page).
 class StoryItem {
   /// Specifies how long the page should be displayed. It should be a reasonable
@@ -278,6 +265,7 @@ class StoryView extends StatefulWidget {
   /// Callback for when a full cycle of story is shown. This will be called
   /// each time the full story completes when [repeat] is set to `true`.
   final VoidCallback onComplete;
+  final VoidCallback canGoPrevious;
 
   /// Callback for when a story is currently being shown.
   final ValueChanged<StoryItem> onStoryShow;
@@ -295,11 +283,13 @@ class StoryView extends StatefulWidget {
 
   StoryView(
     this.storyItems, {
+    this.canGoPrevious,
     this.onComplete,
     this.onStoryShow,
     this.progressPosition = ProgressPosition.top,
     this.repeat = false,
     this.inline = false,
+    Key key,
   })  : assert(storyItems != null && storyItems.length > 0,
             "[storyItems] should not be null or empty"),
         assert(progressPosition != null, "[progressPosition] cannot be null"),
@@ -307,7 +297,8 @@ class StoryView extends StatefulWidget {
           repeat != null,
           "[repeat] cannot be null",
         ),
-        assert(inline != null, "[inline] cannot be null");
+        assert(inline != null, "[inline] cannot be null"),
+        super(key: key);
 
   @override
   State<StatefulWidget> createState() {
@@ -449,7 +440,7 @@ class StoryViewState extends State<StoryView> with TickerProviderStateMixin {
     this.animationController?.stop(canceled: false);
   }
 
-  void unpause() {
+  void resume() {
     this.animationController?.forward();
   }
 
@@ -460,7 +451,7 @@ class StoryViewState extends State<StoryView> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
+      color: Colors.black,
       child: Stack(
         children: <Widget>[
           currentView,
@@ -499,21 +490,31 @@ class StoryViewState extends State<StoryView> with TickerProviderStateMixin {
                         () => TapGestureRecognizer(), (instance) {
                   instance
                     ..onTapDown = (details) {
+                      print("onTapDown");
                       pause();
                       debouncer?.cancel();
                       debouncer = Timer(Duration(milliseconds: 500), () {});
                     }
                     ..onTapUp = (details) {
-                      if (debouncer?.isActive == true) {
-                        debouncer.cancel();
-                        debouncer = null;
+                      print("onTapUp");
+                      final storyItem = widget.storyItems.firstWhere((it) {
+                        return !it.shown;
+                      });
+                      if (storyItem != null) if (widget.storyItems.last ==
+                          storyItem)
+                        onComplete();
+                      else {
+                        if (debouncer?.isActive == true) {
+                          debouncer.cancel();
+                          debouncer = null;
 
-                        goForward();
-                      } else {
-                        debouncer.cancel();
-                        debouncer = null;
+                          goForward();
+                        } else {
+                          debouncer.cancel();
+                          debouncer = null;
 
-                        unpause();
+                          resume();
+                        }
                       }
                     };
                 })
@@ -526,7 +527,14 @@ class StoryViewState extends State<StoryView> with TickerProviderStateMixin {
             child: SizedBox(
               child: GestureDetector(
                 onTap: () {
-                  goBack();
+                  final storyItem = widget.storyItems.firstWhere((it) {
+                    return !it.shown;
+                  });
+                  if (storyItem != null) if (widget.storyItems.first ==
+                      storyItem) {
+                    widget.canGoPrevious();
+                  } else
+                    goBack();
                 },
               ),
               width: 70,
